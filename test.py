@@ -15,7 +15,6 @@ import json
 from collections import Counter
 import time
 import os.path
-import matplotlib.pyplot as plt
 import requests
 
 from bokeh.io import curdoc
