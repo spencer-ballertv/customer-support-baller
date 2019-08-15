@@ -144,6 +144,12 @@ def update_data(attrname, old, new):
 
     source.data = dict(x=x_list, y=y_list, group=group_list, color=color_list)
 
+    raw = open("corpus2.txt", "r+")
+    raw.seek(0)                        # <- This is the missing piece
+    raw.truncate()
+    raw.write('New contents\n')
+    raw.close()
+
 phrase.on_change('value', update_data)
 datepicker1.on_change('value', update_data)
 datepicker2.on_change('value', update_data)
