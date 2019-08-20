@@ -9,6 +9,7 @@ in your browser.
 '''
 import numpy as np
 import pandas as pd
+import zenpy as zp
 import ast
 import datetime
 import json
@@ -16,21 +17,71 @@ from collections import Counter
 import time
 import os.path
 import requests
+from sklearn.feature_extraction.text import CountVectorizer 
+import re
+from textblob import TextBlob
 
 from bokeh.io import curdoc
 from bokeh.layouts import row, column
-from bokeh.models import ColumnDataSource, Button, Range
-from bokeh.models.widgets import Slider, TextInput, DataTable, TableColumn, DatePicker
+from bokeh.models import ColumnDataSource, Button, Range, LabelSet
+from bokeh.models.widgets import Slider, TextInput, DataTable, TableColumn, DatePicker, CheckboxGroup
 from bokeh.plotting import figure
 from bokeh.events import ButtonClick
+
+stop_words = [
+   "241", "260", "2bphh", "360000264512", "427", "4646", "626", "6928", "a", "about", "above", "across", "after", "afterwards", "again", "against",
+   "almost", "alone", "along", "already", "also", "although", "always",
+   "am", "amanda", "among", "amongst", "amoungst", "an", "and",
+   "any", "anyhow", "anyone", "anything", "anyway", "anywhere", "aol", "are",
+   "around", "as", "at", "back", "baller", "ballet", "ballertv", "balr", "be", "became", "because", "become",
+   "becomes", "becoming", "been", "before", "beforehand", "behind", "being",
+   "below", "beside", "besides", "between", "beyond", "bill", "both",
+   "bottom", "but", "by", "call", "can", "carroll", "co", "con",
+   "could", "cry", "de", "describe", "detail", "did", "do", "done", "dorantes"
+   "down", "due", "during", "each", "eg", "eight", "either", "eleven", "else",
+   "elsewhere", "empty", "enough", "eric", "etc", "even", "ever", "every", "everyone",
+   "everything", "everywhere", "except", "few", "fifteen", "fifty", "fill",
+   "find", "fire", "first", "five", "for", "former", "formerly", "forty",
+   "found", "four", "from", "front", "full", "further", "get", "gino", "give", "gmail", "go", "greg",
+   "had", "has", "have", "he", "hence", "hensley", "hello", "her", "here", "hereafter",
+   "hereby", "herein", "hereupon", "hers", "herself", "hey", "hi", "him", "himself", "his",
+   "how", "however", "httpswwwballertvstreamsnextleveleclipsegrayvsswarmblackrichie", "hundred", "husband", "i", "ie", "if", "im", "in", "inc", "indeed",
+   "interest", "into", "is", "it", "its", "itself", "janelle", "jennifer", "john", "joyce", "just", "kaj", "keep", "last", "latter",
+   "latterly", "lawrence", "least", "less", "ll", "ltd", "made", "many", "marc", "maria", "sanogal", "may", "me",
+   "meanwhile", "melgarejo", "merged", "might", "mill", "miller", "mine", "mj", "more", "moreover", "most", "mostly",
+   "move", "much", "must", "my", "myself", "name", "namely", "neither",
+   "never", "nevertheless", "next", "nine", "nobody", "none", "noone",
+   "nor", "nowhere", "of", "off", "often", "ok", "on",
+   "once", "one", "only", "onto", "or", "other", "others", "otherwise", "our",
+   "ours", "ourselves", "out", "over", "own", "part", "per", "perhaps",
+   "please", "put", "r3xecg9oeir8g6isrkdq5o5ojyqaetkrrn", "rather", "re", "regards", "same", "see", "seem", "seemed",
+   "seeming", "seems", "serious", "several", "she", "should", "show", "side",
+   "since", "sincere", "sincerely", "six", "sixty", "so", "some", "somehow", "someone",
+   "something", "sometime", "sometimes", "somewhere", "spiece", "steph", "still", "such", "supportballertv",
+   "system", "t", "take", "ten", "than", "thank", "thanks", "that", "thatcher", "thats", "the", "their", "them",
+   "themselves", "then", "thence", "there", "thereafter", "thereby",
+   "therefore", "therein", "thereupon", "these", "they", "thick", "thin",
+   "third", "this", "those", "though", "three", "through", "throughout",
+   "thru", "thus", "thx", "to", "together", "too", "top", "toward", "towards", "tv",
+   "twelve", "twenty", "two", "un", "under", "until", "up", "upon", "us",
+   "very", "via", "ve", "was", "we", "well", "were", "what", "whatever", "when",
+   "whence", "whenever", "where", "whereafter", "whereas", "whereby",
+   "wherein", "whereupon", "wherever", "whether", "which", "while", "whither",
+   "who", "whoever", "whole", "whom", "whose", "why", "wife", "will", "with",
+   "within", "without", "would", "wwwxsportfitnesscom", "xsport_fitness_", "yahoo", "yes", "yet", "you", "your", "yours", "yourself",
+   "yourselves"]
 
 
 # Set up data
 with open('corpus2.txt') as f:
     data = ast.literal_eval(f.read())
 
-with open('top_ten.txt') as f:
+with open('cumulative.txt') as f:
     top_ten = ast.literal_eval(f.read())
+
+with open('norm.txt') as f:
+    norm = ast.literal_eval(f.read())
+
 
 
 weeks = []
@@ -46,6 +97,10 @@ while week > datetime.datetime(2018,4,1):
     week = week - datetime.timedelta(7)
     weeks.append(str(week))
 
+for w in weeks:
+    if w not in norm:
+        norm[w] = 1
+
 x = [[]]
 y = [[]]
 group = ['legend']
@@ -58,8 +113,8 @@ source = ColumnDataSource(data=dict(x=x, y=y, group=group, color=color))
 table_source = ColumnDataSource(data=dict())
 
 # Set up plot
-plot = figure(x_axis_type="datetime", plot_height=700, plot_width=700, y_range=(0,100), title="look up words or phrases (up to three words) separated by a ','",
-              tools="pan,reset,save,wheel_zoom")
+plot = figure(x_axis_type="datetime", plot_height=700, plot_width=700, y_range=(0,100), title="Last Corpus Update: 08-04-2019",
+              tools="pan,save,wheel_zoom")
 
 plot.multi_line(xs='x', ys='y', legend='group', source=source, line_color='color', line_width=3, line_alpha=0.6)
 
@@ -67,22 +122,21 @@ data_table = DataTable(source=table_source, columns=columns, width=600)
 
 
 # Set up widgets
-phrase = TextInput(title="Graph this word or phrase:", value='')
+phrase = TextInput(title="Graph these comma-separated phrases:", value='')
 
-datepicker1 = DatePicker(title="Start Date:", min_date=datetime.datetime(2018,1,1),
+datepicker1 = DatePicker(title="Start Date:", min_date=datetime.datetime(2018,4,1),
                        max_date=datetime.datetime.now(),
-                       value=datetime.datetime(2018,4,1)
+                       value=datetime.datetime(2018,4,15)
                        )
 
-datepicker2 = DatePicker(title="End Date:", min_date=datetime.datetime(2018,1,1),
-                       max_date=datetime.datetime.now(),
-                       value=datetime.datetime.now()
-                       )
-
-datepicker3 = DatePicker(title="(This will take ~5 mins per day)\n Update Corpus to:", min_date=datetime.datetime(2018,1,1),
+datepicker2 = DatePicker(title="End Date:", min_date=datetime.datetime(2018,4,16),
                        max_date=datetime.datetime.now(),
                        value=datetime.datetime.now()
                        )
+
+
+checkbox_group = CheckboxGroup(
+        labels=["Normalize"])
 
 button = Button(label="Update Corpus")
 
@@ -90,6 +144,10 @@ def update_data(attrname, old, new):
     
     d1 = datetime.datetime.combine(datepicker1.value, datetime.time())
     d2 = datetime.datetime.combine(datepicker2.value, datetime.time())
+    wd1 = d1.weekday()
+    wd2 = d2.weekday()
+    d1 = d1 - datetime.timedelta(wd1)
+    d2 = d2 - datetime.timedelta(wd2)
     p = phrase.value
     p = p.split(",")
     x_list = []
@@ -102,11 +160,34 @@ def update_data(attrname, old, new):
     tt = {}
 
     for d in top_ten:
-        date = datetime.datetime.strptime(d,'%Y-%m-%d %H:%M:%S')
-        if date >= d1 and date <= d2:
-            tt = dict(Counter(tt)+Counter(top_ten[d]))
-    count_freq = Counter(tt)
-    top_10 = count_freq.most_common(10)
+        if str(d1) not in top_ten and str(d2) not in top_ten:
+            date = str(d2)
+            while date not in top_ten:
+                date = datetime.datetime.strptime(date,'%Y-%m-%d %H:%M:%S')
+                date = date - datetime.timedelta(7)
+                date = str(date)
+
+            count_freq = Counter(top_ten[date])
+            top_10 = count_freq.most_common(10)
+        elif str(d1) not in top_ten:
+            count_freq = Counter(top_ten[str(d2)])
+            top_10 = count_freq.most_common(10)
+        elif str(d2) not in top_ten:
+            date = str(d2)
+            while date not in top_ten:
+                date = datetime.datetime.strptime(date,'%Y-%m-%d %H:%M:%S')
+                date = date - datetime.timedelta(7)
+                date = str(date)
+
+            tt = dict(Counter(top_ten[date])-Counter(top_ten[str(d1)]))
+            count_freq = Counter(tt)
+            top_10 = count_freq.most_common(10)
+        else:
+            tt = dict(Counter(top_ten[str(d2)])-Counter(top_ten[str(d1)]))
+            count_freq = Counter(tt)
+            top_10 = count_freq.most_common(10)
+
+        
     df = pd.DataFrame(top_10, columns=["ngram", "frequency"])
     table_source.data = {
         'ngram' : df.ngram,
@@ -143,13 +224,66 @@ def update_data(attrname, old, new):
     plot.y_range.end = y_max
 
     source.data = dict(x=x_list, y=y_list, group=group_list, color=color_list)
+    #checkbox_group.active = []
+    plot.title.text = "Last Corpus Update:"
 
 phrase.on_change('value', update_data)
 datepicker1.on_change('value', update_data)
 datepicker2.on_change('value', update_data)
+checkbox_group.on_change('active', update_data)
+
+
+def normalize(atrr, old, new):
+    d1 = datetime.datetime.combine(datepicker1.value, datetime.time())
+    d2 = datetime.datetime.combine(datepicker2.value, datetime.time())
+    wd1 = d1.weekday()
+    wd2 = d2.weekday()
+    d1 = d1 - datetime.timedelta(wd1)
+    d2 = d2 - datetime.timedelta(wd2)
+
+    t = list(norm.keys())
+    t.sort()
+    new = []
+    for n in range(len(t)):
+        date = datetime.datetime.strptime(t[n],'%Y-%m-%d %H:%M:%S')
+        if date >= d1 and date <= d2:
+            new.append(t[n])
+    num_ticks = [norm[m] for m in new]
+
+    new_y = []
+
+    if checkbox_group.active == [0]:
+        
+        for y in source.data['y']:
+            divide = [a/b for a, b in zip(y, num_ticks)]
+            new_y.append(divide)
+    else:
+        for y in source.data['y']:
+            new_y.append(y)
+
+    y_max = 0.1
+    for lst in new_y:
+        if max(lst) > y_max:
+            y_max = max(lst)
+    y_max += (y_max * 0.1)
+
+    plot.y_range.end = y_max
+    source.data['y'] = new_y
+    print(sum(num_ticks))
+
+
+    
+checkbox_group.on_change('active', normalize)
+phrase.on_change('value', normalize)
+datepicker1.on_change('value', normalize)
+datepicker2.on_change('value', normalize)
 
 def chat_text(ticket):
-    url_comments = zendesk + '/api/v2/tickets/' + str(ticket['id']) + '/comments.json'
+    zendesk = 'https://ballertv.zendesk.com'
+    credentials = 'btv.billrussell@gmail.com', '5time-MVP'
+    session = requests.Session()
+    session.auth = credentials
+    url_comments = zendesk + '/api/v2/tickets/' + str(ticket.id) + '/comments.json'
     response_comments = session.get(url_comments)
     if response_comments.status_code != 200:
         print('Error with status code for comment {}'.format(response_comments.status_code))
@@ -176,7 +310,11 @@ def chat_text(ticket):
         return ''
 
 def not_chat_text(ticket):
-    url_comments = zendesk + '/api/v2/tickets/' + str(ticket['id']) + '/comments.json'
+    zendesk = 'https://ballertv.zendesk.com'
+    credentials = 'btv.billrussell@gmail.com', '5time-MVP'
+    session = requests.Session()
+    session.auth = credentials
+    url_comments = zendesk + '/api/v2/tickets/' + str(ticket.id) + '/comments.json'
     response_comments = session.get(url_comments)
     if response_comments.status_code != 200:
         print('Error with status code for comment {}'.format(response_comments.status_code))
@@ -198,49 +336,105 @@ def not_chat_text(ticket):
         return ''
 
 def callback(event):
-    credentials = 'kirk@baller.tv', 'Baller*269'
-    session = requests.Session()
-    session.auth = credentials
+    print("yo")
+    creds = {
+        'email' : 'btv.billrussell@gmail.com',
+        'password' : '5time-MVP',
+        'subdomain': 'ballertv'
+    }
     zendesk = 'https://ballertv.zendesk.com'
 
-    url = zendesk + '/api/v2/incremental/tickets.json?start_time=1514764800'
-    tier1_codes = ['billing', 'product', '404error', 'partnerquestion', 'forgotpassword', 'eventpass']
-    start_at = 1
-    count = 0
-    while url:
-        tickets = []
-        response = session.get(url)
-        if response.status_code != 200:
-            print('Error with status code {}'.format(response))
-            break
+    zenpy_client = zp.Zenpy(proactive_ratelimit=2500, **creds)
 
-        data = response.json()
-        if count >= start_at:
-            time.sleep(30)
-            for ticket in data['tickets']:
-                ticketdict = {}
-                if len(list(set(ticket['tags']) & set(tier1_codes))) > 0:
-                    if 'zopim_chat_ended' in ticket['tags']:
-                        text = chat_text(ticket)
-                    else:
-                        text = not_chat_text(ticket)
-                    if text:
-                        ticketdict['id'] = ticket['id']
-                        ticketdict['created_at'] = ticket['created_at']
-                        ticketdict['tags'] = ticket['tags']
-                        ticketdict['text'] = text
-                        tickets.append(ticketdict)
-            if len(tickets) > 0:
-                with open('/Users/ballertvdev/Documents/tickets/tickets' + str(count) + '.txt', 'w') as json_file:
-                    json.dump(tickets, json_file)
+    tier1_codes = ['billing', 'product', '404error', 'partnerquestion', 'forgotpassword', 'eventpass']
+
+    pull_time = str(datetime.datetime.now())
+
+    print("what up")
+    yesterday = datetime.datetime.now() - datetime.timedelta(days=8)
+    today = datetime.datetime.now()
+    count = 1
+    tickets = []
+    for ticket in zenpy_client.search(created_between=[yesterday, today], type='ticket'):
+        ticketdict = {}
+        if len(list(set(ticket.tags) & set(tier1_codes))) > 0:
+            if 'zopim_chat_ended' in ticket.tags:
+                text = chat_text(ticket)
+            else:
+                text = not_chat_text(ticket)
+            if text:
+                ticketdict['id'] = ticket.id
+                ticketdict['created_at'] = ticket.created_at
+                ticketdict['tags'] = ticket.tags
+                ticketdict['text'] = text
+                tickets.append(ticketdict)
         print(count)
         count += 1
-        url = data['next_page']
+
+    top_t_temp = {}
+
+    for tick in tickets:
+
+        text = tick["text"]
+        text = re.sub(r'[^\w\s]','', text)
+        text = re.sub(r'\w*\d\w*', '', text).strip()
+        text = text.lower()
+        text = TextBlob(text)
+        text = str(text.correct())
+        d = tick["created_at"]
+        date = d.split('T')
+        date = date[0]
+        date = datetime.datetime.strptime(tick["created_at"].split("T")[0], '%Y-%m-%d')
+        wd = date.weekday()
+        if wd != 0:
+            date = date - datetime.timedelta(wd)
+        date = str(date)
+        if date not in top_t_temp:
+            top_t_temp[date] = {}
+        if date in norm:
+            norm[date] += 1
+        if date not in norm:
+            norm[date] = 1
+        
+        vectorizer = CountVectorizer(ngram_range=(1,3), stop_words = stop_words)
+        analyzer = vectorizer.build_analyzer()
+        grams = analyzer(text)
+        
+        for gram in grams:
+            if gram not in top_t_temp[date] and gram != "no" and gram != "not":
+                top_t_temp[date][gram] = 1
+            
+            if gram in top_t_temp[date]:
+                top_t_temp[date][gram] += 1
+                
+            if gram not in data:
+                data[gram] = {}
+                data[gram][date] = 1
+                
+            if date not in data[gram]:
+                data[gram][date] = 1
+                
+            else:
+                data[gram][date] += 1
+    time = str(datetime.datetime.now())
+    top_t_keys = list(top_t_temp.keys())
+    delete = []
+    for key in top_t_keys:
+        tt_lst = list(top_t_temp[key].keys())
+        for k in tt_lst:
+            if len(k.split()) > 1:
+                del top_t_temp[key][k]
+    top_t_keys = list(top_t_temp.keys())
+    top_t_keys.sort()
+    top_ten[top_t_keys[0]] = top_t_temp[top_t_keys[0]]
+    for i in range(1, len(top_t_keys)):
+        top_ten[top_t_keys[i]] = dict(Counter(top_t_temp[top_t_keys[i]])+Counter(top_ten[top_t_keys[i-1]]))
+    print("hello")
 
 button.on_event(ButtonClick, callback)
 
 # Set up layouts and add to document
-inputs = column(phrase, datepicker1, datepicker2, datepicker3, button)
+inputs = column(phrase, datepicker1, datepicker2, checkbox_group, button)
 
 curdoc().add_root(row(inputs, plot, data_table, width=800))
 curdoc().title = "NGram Viewer"
