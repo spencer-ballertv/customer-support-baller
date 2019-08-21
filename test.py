@@ -398,12 +398,12 @@ def callback(event):
                 ticketdict['tags'] = ticket.tags
                 ticketdict['text'] = text
                 tickets.append(ticketdict)
-        print(count)
         count += 1
 
     top_t_temp = {}
 
     for tick in tickets:
+        print(count)
 
         text = tick["text"]
         text = re.sub(r'[^\w\s]','', text)
