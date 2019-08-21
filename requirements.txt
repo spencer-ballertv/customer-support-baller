@@ -5,5 +5,5 @@ pandas
 requests
 zenpy
 sklearn
-github
+PyGithub
 textblob
