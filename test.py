@@ -19,6 +19,7 @@ import os.path
 import requests
 from sklearn.feature_extraction.text import CountVectorizer 
 import re
+import github
 from textblob import TextBlob
 
 from bokeh.io import curdoc
@@ -82,6 +83,19 @@ with open('cumulative.txt') as f:
 with open('norm.txt') as f:
     norm = ast.literal_eval(f.read())
 
+with open('time.txt') as f:
+    time = ast.literal_eval(f.read())
+
+files = [data, top_ten, norm]
+
+for file in files:
+    if type(file) == str:
+        file = dict(file)
+
+
+time = datetime.datetime.strptime(time,'%Y-%m-%d %H:%M:%S')
+
+title = "Last Corpus Update: " + str(time)
 
 
 weeks = []
@@ -113,7 +127,7 @@ source = ColumnDataSource(data=dict(x=x, y=y, group=group, color=color))
 table_source = ColumnDataSource(data=dict())
 
 # Set up plot
-plot = figure(x_axis_type="datetime", plot_height=700, plot_width=700, y_range=(0,100), title="Last Corpus Update: 08-04-2019",
+plot = figure(x_axis_type="datetime", plot_height=700, plot_width=700, y_range=(0,100), title=title,
               tools="pan,save,wheel_zoom")
 
 plot.multi_line(xs='x', ys='y', legend='group', source=source, line_color='color', line_width=3, line_alpha=0.6)
@@ -140,8 +154,7 @@ checkbox_group = CheckboxGroup(
 
 button = Button(label="Update Corpus")
 
-def update_data(attrname, old, new):
-    
+def update_data(attrname, old, new):    
     d1 = datetime.datetime.combine(datepicker1.value, datetime.time())
     d2 = datetime.datetime.combine(datepicker2.value, datetime.time())
     wd1 = d1.weekday()
@@ -224,8 +237,7 @@ def update_data(attrname, old, new):
     plot.y_range.end = y_max
 
     source.data = dict(x=x_list, y=y_list, group=group_list, color=color_list)
-    #checkbox_group.active = []
-    plot.title.text = "Last Corpus Update:"
+    
 
 phrase.on_change('value', update_data)
 datepicker1.on_change('value', update_data)
@@ -335,6 +347,24 @@ def not_chat_text(ticket):
     else:
         return ''
 
+
+def update_files(file, new_contents):
+    user = "spencer-ballertv"
+    password = "Harden#13"
+    g = github.Github(user,password)
+    repo = g.get_user().get_repo('customer-support-baller')
+
+    master = requests.get('https://api.github.com/repos/spencer-ballertv/customer-support-baller/git/trees/master').json()
+
+    for d in master["tree"]:
+        if d["path"] == file:
+            sha = d["sha"]
+
+    commit_msg = "corpus pull: " + str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    content = json.dumps(new_contents)
+
+    repo.update_file(file, commit_msg, content, sha)
+
 def callback(event):
     print("yo")
     creds = {
@@ -348,10 +378,10 @@ def callback(event):
 
     tier1_codes = ['billing', 'product', '404error', 'partnerquestion', 'forgotpassword', 'eventpass']
 
-    pull_time = str(datetime.datetime.now())
+    pull_time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     print("what up")
-    yesterday = datetime.datetime.now() - datetime.timedelta(days=8)
+    yesterday = datetime.datetime.strptime(plot.title.text[20:],'%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.now()
     count = 1
     tickets = []
@@ -416,7 +446,6 @@ def callback(event):
                 
             else:
                 data[gram][date] += 1
-    time = str(datetime.datetime.now())
     top_t_keys = list(top_t_temp.keys())
     delete = []
     for key in top_t_keys:
@@ -426,10 +455,21 @@ def callback(event):
                 del top_t_temp[key][k]
     top_t_keys = list(top_t_temp.keys())
     top_t_keys.sort()
-    top_ten[top_t_keys[0]] = top_t_temp[top_t_keys[0]]
+    top_ten_keys = list(top_ten.keys())
+    top_ten_keys.sort()
+    top_ten_last_key = top_ten_keys[-1]
+    top_ten[top_t_keys[0]] = dict(Counter(top_t_temp[top_t_keys[0]])+Counter(top_ten[top_ten_last_key]))
     for i in range(1, len(top_t_keys)):
         top_ten[top_t_keys[i]] = dict(Counter(top_t_temp[top_t_keys[i]])+Counter(top_ten[top_t_keys[i-1]]))
     print("hello")
+    plot.title.text = "Last Corpus Update: " + pull_time
+    update_files("corpus2.txt", data)
+    print("check")
+    update_files("cumulative.txt", top_ten)
+    print("check")
+    update_files("norm.txt", norm)
+    print("check")
+    update_files("time.txt", pull_time)
 
 button.on_event(ButtonClick, callback)
 
