@@ -24,7 +24,7 @@ from textblob import TextBlob
 
 from bokeh.io import curdoc
 from bokeh.layouts import row, column
-from bokeh.models import ColumnDataSource, Button, Range, LabelSet
+from bokeh.models import ColumnDataSource, Button, Range, LabelSet, HoverTool
 from bokeh.models.widgets import Slider, TextInput, DataTable, TableColumn, DatePicker, CheckboxGroup
 from bokeh.plotting import figure
 from bokeh.events import ButtonClick
@@ -74,13 +74,13 @@ stop_words = [
 
 
 # Set up data
-with open('corpus2.txt') as f:
+with open('corpus.txt') as f:
     data = ast.literal_eval(f.read())
 
-with open('cumulative.txt') as f:
+with open('cumul.txt') as f:
     top_ten = ast.literal_eval(f.read())
 
-with open('norm.txt') as f:
+with open('norm2.txt') as f:
     norm = ast.literal_eval(f.read())
 
 with open('time.txt') as f:
@@ -123,14 +123,22 @@ columns = [
     TableColumn(field="ngram", title="NGram"),
     TableColumn(field="frequency", title="Frequency")
 ]
-source = ColumnDataSource(data=dict(x=x, y=y, group=group, color=color))
+source = ColumnDataSource(data=dict(date=x, freq=y, group=group, color=color))
 table_source = ColumnDataSource(data=dict())
 
 # Set up plot
 plot = figure(x_axis_type="datetime", plot_height=700, plot_width=700, y_range=(0,100), title=title,
               tools="pan,save,wheel_zoom")
 
-plot.multi_line(xs='x', ys='y', legend='group', source=source, line_color='color', line_width=3, line_alpha=0.6)
+plot.multi_line(xs='date', ys='freq', legend='group', source=source, line_color='color', line_width=3, line_alpha=0.6, hover_line_color='color', hover_line_alpha=1.0)
+
+hover = HoverTool(tooltips=[('Date','$x{%F}'), 
+                        ('Frequency','$y{0}')], 
+              formatters={'$x': 'datetime'},
+              mode = 'mouse',
+             line_policy='nearest')
+
+plot.add_tools(hover)
 
 data_table = DataTable(source=table_source, columns=columns, width=600)
 
@@ -236,7 +244,7 @@ def update_data(attrname, old, new):
 
     plot.y_range.end = y_max
 
-    source.data = dict(x=x_list, y=y_list, group=group_list, color=color_list)
+    source.data = dict(date=x_list, freq=y_list, group=group_list, color=color_list)
     
 
 phrase.on_change('value', update_data)
@@ -266,11 +274,11 @@ def normalize(atrr, old, new):
 
     if checkbox_group.active == [0]:
         
-        for y in source.data['y']:
+        for y in source.data['freq']:
             divide = [a/b for a, b in zip(y, num_ticks)]
             new_y.append(divide)
     else:
-        for y in source.data['y']:
+        for y in source.data['freq']:
             new_y.append(y)
 
     y_max = 0.1
@@ -280,8 +288,7 @@ def normalize(atrr, old, new):
     y_max += (y_max * 0.1)
 
     plot.y_range.end = y_max
-    source.data['y'] = new_y
-    print(sum(num_ticks))
+    source.data['freq'] = new_y
 
 
     
@@ -378,7 +385,9 @@ def callback(event):
 
     tier1_codes = ['billing', 'product', '404error', 'partnerquestion', 'forgotpassword', 'eventpass']
 
-    pull_time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    pull_time = datetime.datetime.now()# - datetime.timedelta(hours=7)
+
+    pull_time = str(pull_time.strftime("%Y-%m-%d %H:%M:%S"))
 
     print("what up")
     yesterday = datetime.datetime.strptime(plot.title.text[20:],'%Y-%m-%d %H:%M:%S')
