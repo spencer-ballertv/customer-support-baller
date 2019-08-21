@@ -4,8 +4,6 @@ bokeh
 pandas 
 requests
 zenpy
-collections
-os
 sklearn
 github
 textblob
