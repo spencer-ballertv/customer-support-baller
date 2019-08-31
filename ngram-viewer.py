@@ -14,7 +14,7 @@ import ast
 import datetime
 import json
 from collections import Counter
-import time
+import time as t
 import os.path
 import requests
 from sklearn.feature_extraction.text import CountVectorizer 
@@ -304,57 +304,66 @@ def chat_text(ticket):
     credentials = 'btv.billrussell@gmail.com', '5time-MVP'
     session = requests.Session()
     session.auth = credentials
-    url_comments = zendesk + '/api/v2/tickets/' + str(ticket.id) + '/comments.json'
+    url_comments = zendesk + '/api/v2/tickets/' + str(ticket['id']) + '/comments.json'
     response_comments = session.get(url_comments)
     if response_comments.status_code != 200:
         print('Error with status code for comment {}'.format(response_comments.status_code))
         return ''
     comment_data = response_comments.json()
     if len(comment_data['comments']) > 2:
-        tickettext = ''
-        nametext = comment_data['comments'][2]['body'].split('\n')
+        tickettext_customer = ''
+        tickettext_agent = ''
+        agenttext = comment_data['comments'][0]['body'].split('\n')[1]
+        nametext = ['', '', '']
+        for i, c in enumerate(comment_data['comments']):
+            if 'Chat ended: 20' in c['body'].split('\n')[0]:
+                nametext = comment_data['comments'][i]['body'].split('\n')
         if len(nametext) < 3:
-            return ''
+            print('err1', nametext)
+            return '', ''
         name = nametext[2]
         if 'Name: ' not in name:
-            return ''
+            print('err2', nametext)
+            return '', ''
+        if 'Served by:' not in agenttext:
+            print('err3', agenttext)
+            return '', ''
+        agent = agenttext[11:]
         name = name[6:]
         chat = comment_data['comments'][1]['body'].split('\n')
         for line in chat:
             if (name + ': ') in line:
                 ind = line.index(name + ': ')
-                tickettext = tickettext + ' ' + line[(ind + len(name) + 2):]
-        for c in range(len(comment_data['comments']) - 3):
-            tickettext = tickettext + ' ' + ' '.join(comment_data['comments'][c + 3]['body'].split('\n'))
-        return tickettext
+                tickettext_customer = tickettext_customer + ' ' + line[(ind + len(name) + 2):]
+            if (agent + ': ') in line:
+                ind = line.index(agent + ': ')
+                tickettext_agent = tickettext_agent + ' ' + line[(ind + len(agent) + 2):]
+        if len(comment_data['comments']) > 3:
+            ctext, atext = email_parse(comment_data['comments'][3:])
+            tickettext_customer = tickettext_customer + ' ' + ctext
+            tickettext_agent = tickettext_agent + ' ' + atext
+        return tickettext_customer, tickettext_agent
     else:
-        return ''
+        print('err4', comment_data['comments'])
+        return '', ''
 
 def not_chat_text(ticket):
     zendesk = 'https://ballertv.zendesk.com'
     credentials = 'btv.billrussell@gmail.com', '5time-MVP'
     session = requests.Session()
     session.auth = credentials
-    url_comments = zendesk + '/api/v2/tickets/' + str(ticket.id) + '/comments.json'
+    url_comments = zendesk + '/api/v2/tickets/' + str(ticket['id']) + '/comments.json'
     response_comments = session.get(url_comments)
     if response_comments.status_code != 200:
         print('Error with status code for comment {}'.format(response_comments.status_code))
-        return ''
+        return '', ''
     comment_data = response_comments.json()
     if len(comment_data['comments']) > 0:
-        tickettext = ''
-        for comment in comment_data['comments']:
-            text = comment['body'].split('\n')
-            if 'Chat started: 20' in text[0]:
-                return ''
-            if 'BallerTV Fan Support' in text or 'BallerTV Support' in text:
-                continue
-            else:
-                text = ' '.join(text)
-            tickettext = tickettext + ' ' +  text
-        return tickettext
+        ctext, atext = email_parse(comment_data['comments'])
+        return ctext, atext
     else:
-        return ''
+        print('err6', comment_data)
+        return '', ''
 
 def email_parse(comments):
     tickettext_customer = ''
@@ -437,6 +446,7 @@ def callback(event):
         # if count >= start_at:
         #     for ticket in data['tickets']:
         ticketdict = {}
+        print(ticket)
 
         if 'zopim_chat_ended' in ticket['tags']:
             ctext, atext = chat_text(ticket)
@@ -452,7 +462,7 @@ def callback(event):
         if len(tickets) > 0 and (ticket_id - start_at) % 100 == 99:
             print(count)
             count += 1
-            time.sleep(60)
+            t.sleep(60)
 
     top_t_temp = {}
 
